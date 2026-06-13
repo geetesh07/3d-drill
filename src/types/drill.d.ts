@@ -1,5 +1,9 @@
-type MaterialType = 'hss' | 'carbide' | 'cobalt' | 'titanium';
-type SurfaceFinishType = 'polished' | 'black-oxide' | 'tin' | 'aln';
+export type MaterialType = 'hss' | 'carbide' | 'cobalt' | 'titanium';
+export type SurfaceFinishType = 'polished' | 'black-oxide' | 'tin' | 'aln';
+export type ToleranceType =
+  | 'h6' | 'h7' | 'h8' | 'h9' | 'h10'
+  | 'H6' | 'H7' | 'H8'
+  | string;
 
 export interface DrillParameters {
   diameter: number;        // Diameter of the drill bit (fluted part)
