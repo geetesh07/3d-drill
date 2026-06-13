@@ -26,15 +26,14 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Download, RefreshCw, Save, Check, X, Loader2, Wand2 } from 'lucide-react';
 import { toast } from "sonner";
-import { DrillParameters, ToleranceType, MaterialType, SurfaceFinishType } from '../types/drill';
-import { exportDrillModel } from '@/lib/exportUtils';
+import { DrillParameters } from '../types/drill';
 import { useSettings } from '@/context/SettingsContext';
 
 interface ParameterInputProps {
   parameters: DrillParameters;
   onParameterChange: (key: keyof DrillParameters, value: any) => void;
   onReset: () => void;
-  onExport: (format: 'stl' | 'dxf') => void;
+  onExport: (format: 'step' | 'dxf') => void;
   onGenerateModel: () => void;
   isGenerating?: boolean;
   validateInput?: boolean;
@@ -286,19 +285,6 @@ const ParameterInput: React.FC<ParameterInputProps> = ({
       case 'features':
         setCurrentStep('lengths');
         break;
-    }
-  };
-
-  const handleExport = async (format: string) => {
-    try {
-      const filename = `Drill_${parameters.diameter}x${parameters.length}_${parameters.fluteCount}F`;
-      await exportDrillModel(parameters, format, filename, showToasts);
-      setShowExportOptions(false);
-    } catch (error) {
-      console.error('Export error:', error);
-      if (showToasts) {
-        toast.error('Failed to export model');
-      }
     }
   };
 
@@ -600,12 +586,12 @@ const ParameterInput: React.FC<ParameterInputProps> = ({
           </Button>
           <Button
             variant="outline"
-            onClick={() => onExport('stl')}
+            onClick={() => onExport('step')}
             className="dark:border-gray-600 dark:text-white dark:hover:bg-gray-700"
             disabled={isGenerating}
           >
             <Download className="mr-2 h-4 w-4" />
-            STL
+            STEP
           </Button>
           <Button
             onClick={onGenerateModel}
