@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SettingsProvider } from "./context/SettingsContext";
 import DrillGenerator from "./pages/DrillGenerator";
+// Registers window.__occSmoke in dev (does not trigger the heavy WASM load until called).
+import "./lib/occ";
 
 const App = () => (
   <ThemeProvider defaultTheme="light">
