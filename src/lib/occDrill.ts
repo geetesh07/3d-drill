@@ -122,8 +122,11 @@ export async function buildDrillSolid(p: DrillParameters): Promise<DrillSolid> {
   if (p.fluteCount >= 2) {
     try {
       const rho = 0.3 * p.diameter; // cutter radius ≈ flute depth
-      const zStart = Math.max(zBodyStart - 1, zApex - p.fluteLength);
-      const zEnd = zApex; // sweep up to the tip apex
+      // Run flutes from the shank/body junction up to the tip. Starting exactly
+      // at the junction (small overlap) avoids a floating mid-body pocket; at the
+      // tip the groove fades naturally as the cone narrows below the cutter.
+      const zStart = zBodyStart - 0.5;
+      const zEnd = zApex;
       if (zEnd - zStart > 1) {
         for (let i = 0; i < p.fluteCount; i++) {
           const phi = (2 * Math.PI * i) / p.fluteCount;

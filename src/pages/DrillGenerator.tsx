@@ -6,6 +6,7 @@ import ParameterInput from "@/components/ParameterInput";
 import { DrillParameters } from "@/types/drill";
 import { toast } from "sonner";
 import { buildDrillSolid, shapeToBufferGeometry, shapeToStep } from "@/lib/occDrill";
+import { exportDrillDxf } from "@/lib/occDxf";
 import { useSettings } from "@/context/SettingsContext";
 import { Loader2 } from "lucide-react";
 
@@ -83,8 +84,9 @@ const DrillGenerator = () => {
           downloadText(`${base}.step`, step, "application/step");
           if (showToasts) toast.success("STEP exported");
         } else {
-          // DXF (2D drawing from the model via HLR) is implemented in the next step.
-          if (showToasts) toast("DXF export is being implemented next", { description: "STEP export is fully working." });
+          const dxf = exportDrillDxf(oc, shape, parameters);
+          downloadText(`${base}.dxf`, dxf, "application/dxf");
+          if (showToasts) toast.success("DXF (2D drawing) exported");
         }
       } catch (e) {
         console.error("Export failed:", e);
