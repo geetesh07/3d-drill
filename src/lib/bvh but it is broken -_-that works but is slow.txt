@@ -1,0 +1,421 @@
+import * as THREE from 'three';
+import { REVERSE_SUBTRACTION, Brush, Evaluator } from 'three-bvh-csg';
+import { MeshStandardMaterial, Mesh, SphereGeometry, BoxGeometry } from 'three';
+import { DrillParameters } from '@/types/drill';
+
+/**
+ * This generates a drill bit with helical flutes.
+ */
+export const generateDrillGeometry = (parameters: DrillParameters): THREE.BufferGeometry => {
+  const { 
+    diameter, 
+    shankDiameter, 
+    shankLength,
+    fluteCount, 
+    fluteLength, 
+    nonCuttingLength = 0,
+    tipAngle, 
+    helixAngle,
+    material
+  } = parameters;
+  
+  // Calculate the tip height based on diameter and tip angle
+  // For 180-degree tip, the height is effectively 0
+  const tipHeight = tipAngle === 180 ? 0 : (diameter / 2) / Math.tan((tipAngle / 2) * Math.PI / 180);
+  
+  // Calculate the proper fluted part length (without the tip)
+  const flutedPartLength = fluteLength - tipHeight - (diameter*1.35);
+  
+  // Calculate chamfer height based on diameter difference to maintain 45-degree angle
+  const chamferHeight = Math.abs(diameter - shankDiameter) / 2;
+  
+  // Use non-cutting length directly from parameters
+  const effectiveNonCuttingLength = nonCuttingLength;
+  
+  // Total length calculation - sum of all components
+  const totalLength = shankLength + chamferHeight + effectiveNonCuttingLength + flutedPartLength + tipHeight;
+  
+  console.log("Generating drill geometry with:", { 
+    diameter, totalLength, shankDiameter, 
+    shankLength, fluteCount, fluteLength, 
+    effectiveNonCuttingLength, tipAngle, helixAngle,
+    tipHeight, flutedPartLength, chamferHeight
+  });
+  
+  // Create the main geometries
+  const geometries: THREE.BufferGeometry[] = [];
+  
+  // Current position tracker (start from bottom)
+  let currentPosition = -totalLength / 2;
+  
+  // 1. Create a solid cylinder for the shank
+  const shank = new THREE.CylinderGeometry(
+    shankDiameter / 2, 
+    shankDiameter / 2,
+    shankLength,
+    32,
+    1,
+    false
+  );
+  
+  shank.translate(0, currentPosition + shankLength / 2, 0);
+  geometries.push(shank);
+  currentPosition += shankLength;
+  
+  // 2. Create chamfer if needed
+  if (chamferHeight > 0) {
+    const chamfer = new THREE.CylinderGeometry(
+      diameter / 2,
+      shankDiameter / 2,
+      chamferHeight,
+      32,
+      32,
+      true
+    );
+    
+    chamfer.translate(0, currentPosition + chamferHeight / 2, 0);
+    geometries.push(chamfer);
+    currentPosition += chamferHeight;
+  }
+  
+  // 3. Create the non-cutting length portion
+  if (effectiveNonCuttingLength > 0) {
+    const nonCuttingPart = new THREE.CylinderGeometry(
+      diameter / 2,
+      diameter / 2,
+      effectiveNonCuttingLength,
+      32,
+      1,
+      false
+    );
+    nonCuttingPart.translate(0, currentPosition + effectiveNonCuttingLength / 2, 0);
+    geometries.push(nonCuttingPart);
+    currentPosition += effectiveNonCuttingLength;
+  }
+
+  // Store the position where flutes begin
+  const fluteStartPosition = currentPosition;
+  
+  // 4. Create the fluted part
+  const flutedPart = new THREE.CylinderGeometry(
+    diameter / 2,
+    diameter / 2,
+    flutedPartLength,
+    32,
+    1,
+    false
+  );
+  flutedPart.translate(0, currentPosition + flutedPartLength / 2, 0);
+  geometries.push(flutedPart);
+  currentPosition += flutedPartLength;
+  
+  // 5. Create the tip (only if not 180 degrees)
+  if (tipAngle !== 180) {
+    const tip = new THREE.ConeGeometry(
+      diameter / 2,
+      tipHeight,
+      32,
+      1,
+      false
+    );
+    tip.translate(0, currentPosition + tipHeight / 2, 0);
+    geometries.push(tip);
+  } else {
+    // For 180-degree tip, just add a flat end cap
+    const endCap = new THREE.CircleGeometry(
+      diameter / 2,
+      32
+    );
+    endCap.rotateX(Math.PI / 2);
+    endCap.translate(0, currentPosition, 0);
+    geometries.push(endCap);
+  }
+  
+  // Merge all basic geometries into one to create the drill body
+  let drillBody = mergeBufferGeometries(geometries);
+  
+  // Create a mesh from the drill body for CSG operations
+  const drillBodyMaterial = new THREE.MeshStandardMaterial();
+  let drillBodyMesh = new THREE.Mesh(drillBody, drillBodyMaterial);
+  
+  // Create helical flutes
+  if (fluteCount > 0) {
+    const helixAngleRad = (helixAngle * Math.PI) / 180;
+    const helixPitch = Math.PI * diameter / Math.tan(helixAngleRad);
+    const radius = diameter / 2;
+    const fluteDepth = diameter * 0.3;
+    
+    const fluteGeometries: THREE.BufferGeometry[] = [];
+    
+    for (let flute = 0; flute < fluteCount; flute++) {
+      const baseAngle = (2 * Math.PI * flute) / fluteCount;
+      
+      try {
+        // Calculate helix parameters
+        const helixHeight = (flutedPartLength + tipHeight) * 1.35;
+        const extensionLength = diameter * 1.35;
+        
+        // Create a unified curve that includes both the straight extension and helix
+        const unifiedCurve = new UnifiedHelixAndExtensionCurve(
+          radius,
+          helixHeight,
+          helixPitch,
+          baseAngle,
+          fluteStartPosition,
+          extensionLength
+        );
+        
+        // Create a single tube geometry from the unified curve
+        const tubularSegments = Math.ceil((helixHeight + extensionLength) / (diameter * 0.015));
+        const tubeGeometry = new THREE.TubeGeometry(
+          unifiedCurve,
+          tubularSegments,
+          fluteDepth,
+          36, // Higher radial resolution
+          false
+        );
+        
+        fluteGeometries.push(tubeGeometry);
+      } catch (error) {
+        console.error('Error creating flute geometry:', error);
+      }
+    }
+    
+    // Merge all flute geometries into a single geometry for better CSG performance
+    if (fluteGeometries.length > 0) {
+      const mergedFluteGeometry = mergeBufferGeometries(fluteGeometries);
+      
+      try {
+        // Perform a single boolean operation with all flutes at once
+        const drillBodyBrush = new Brush(drillBody);
+        drillBodyBrush.updateMatrixWorld();
+
+        const fluteBrush = new Brush(mergedFluteGeometry);
+        fluteBrush.updateMatrixWorld();
+
+        const evaluator = new Evaluator();
+        
+        const drillWithFlutes = evaluator.evaluate(fluteBrush, drillBodyBrush, REVERSE_SUBTRACTION);
+        
+        // Apply advanced healing operations with vertex welding
+        drillBody = healGeometry(drillWithFlutes.geometry);
+      } catch (error) {
+        console.error('Error in CSG operation:', error);
+      }
+    }
+  }
+  
+  return drillBody;
+};
+
+/**
+ * A custom curve class that represents a continuous curve with both
+ * a helical part and a straight extension part
+ */
+class UnifiedHelixAndExtensionCurve extends THREE.Curve<THREE.Vector3> {
+  private totalLength: number;
+  private helixTotalRevolutions: number;
+  
+  constructor(
+    private radius: number,
+    private helixHeight: number,
+    private helixPitch: number,
+    private baseAngle: number,
+    private startY: number,
+    private extensionLength: number
+  ) {
+    super();
+    
+    // Calculate total helix revolutions
+    this.helixTotalRevolutions = this.helixHeight / this.helixPitch;
+    
+    // Calculate approximate total curve length
+    // For a helix, each revolution has length ~= 2πr + pitch²/2πr
+    const helixLength = this.helixTotalRevolutions * 
+      (2 * Math.PI * this.radius + Math.pow(this.helixPitch, 2) / (2 * Math.PI * this.radius));
+      
+    this.totalLength = helixLength + extensionLength;
+  }
+  
+  getPoint(t: number, optionalTarget?: THREE.Vector3): THREE.Vector3 {
+    const target = optionalTarget || new THREE.Vector3();
+    
+    // Separate the curve into extension part and helix part
+    // t = 0 is at the end of the extension (farthest from helix)
+    // t = t_split is at the junction between extension and helix
+    // t = 1 is at the end of the helix
+    
+    // Calculate what portion of the total curve is the extension
+    const extensionRatio = this.extensionLength / this.totalLength;
+    
+    // If t is in the extension part
+    if (t <= extensionRatio) {
+      // Normalize t for the extension part (0 to 1)
+      const extensionT = t / extensionRatio;
+      
+      // Calculate the tangent direction at the start of the helix
+      // For a helix with parametric equation (r*cos(t), h*t/(2π), r*sin(t)),
+      // the tangent is proportional to (-r*sin(t), h/(2π), r*cos(t))
+      const pitchFactor = this.helixPitch / (2 * Math.PI);
+      const tangentX = -this.radius * Math.sin(this.baseAngle);
+      const tangentY = pitchFactor;
+      const tangentZ = this.radius * Math.cos(this.baseAngle);
+      
+      // Normalize the tangent vector
+      const tangentLength = Math.sqrt(tangentX * tangentX + tangentY * tangentY + tangentZ * tangentZ);
+      const normalizedTangentX = tangentX / tangentLength;
+      const normalizedTangentY = tangentY / tangentLength;
+      const normalizedTangentZ = tangentZ / tangentLength;
+      
+      // Calculate the helix starting point
+      const helixStartPoint = new THREE.Vector3(
+        this.radius * Math.cos(this.baseAngle),
+        this.startY,
+        this.radius * Math.sin(this.baseAngle)
+      );
+      
+      // Calculate the extension end point (opposite Y direction from helix tangent)
+      const extensionEndPoint = new THREE.Vector3(
+        helixStartPoint.x + normalizedTangentX * this.extensionLength,
+        helixStartPoint.y - normalizedTangentY * this.extensionLength, // Opposite Y
+        helixStartPoint.z + normalizedTangentZ * this.extensionLength
+      );
+      
+      // Linear interpolate from extension end to helix start
+      // Note: extensionT=0 is at extension end, extensionT=1 is at helix start
+      target.lerpVectors(extensionEndPoint, helixStartPoint, extensionT);
+      return target;
+    }
+    // If t is in the helix part
+    else {
+      // Normalize t for the helix part (0 to 1)
+      const helixT = (t - extensionRatio) / (1 - extensionRatio);
+      
+      // Calculate the parametric position on the helix
+      const angle = this.baseAngle - helixT * (this.helixTotalRevolutions * 2 * Math.PI);
+      const y = this.startY + helixT * this.helixHeight;
+      const x = this.radius * Math.cos(angle);
+      const z = this.radius * Math.sin(angle);
+      
+      target.set(x, y, z);
+      return target;
+    }
+  }
+}
+
+// Helper function to heal geometry after CSG operations
+function healGeometry(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
+  // Make a copy to avoid modifying the original
+  const healed = geometry.clone();
+  
+  // Ensure we have position attribute
+  if (!healed.getAttribute('position')) {
+    console.error('Geometry missing position attribute');
+    return healed;
+  }
+  
+  // Recompute vertex normals for better lighting
+  healed.computeVertexNormals();
+  
+  // Ensure we have UV coordinates
+  if (!healed.getAttribute('uv')) {
+    const uvs = [];
+    const vertexCount = healed.getAttribute('position').count;
+    
+    for (let i = 0; i < vertexCount; i++) {
+      uvs.push(0, 0); // Default UV coordinates
+    }
+    
+    healed.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  }
+  
+  // Ensure bounding volumes are up to date
+  healed.computeBoundingSphere();
+  healed.computeBoundingBox();
+  
+  return healed;
+}
+
+// Helper function to merge buffer geometries
+function mergeBufferGeometries(geometries: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  // Get total number of vertices
+  let vertexCount = 0;
+  let indexCount = 0;
+  
+  for (const geometry of geometries) {
+    const position = geometry.getAttribute('position');
+    vertexCount += position.count;
+    
+    if (geometry.index) {
+      indexCount += geometry.index.count;
+    }
+  }
+  
+  // Create merged geometry
+  const mergedGeometry = new THREE.BufferGeometry();
+  
+  // Create arrays for attributes
+  const positions = new Float32Array(vertexCount * 3);
+  const normals = new Float32Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2);
+  
+  // Create index array if needed
+  let indices: Uint32Array | null = null;
+  if (indexCount > 0) {
+    indices = new Uint32Array(indexCount);
+  }
+  
+  // Merge geometries
+  let vertexOffset = 0;
+  let indexOffset = 0;
+  
+  for (const geometry of geometries) {
+    // Copy position attribute
+    const position = geometry.getAttribute('position');
+    for (let i = 0; i < position.count; i++) {
+      positions[vertexOffset * 3 + i * 3] = position.getX(i);
+      positions[vertexOffset * 3 + i * 3 + 1] = position.getY(i);
+      positions[vertexOffset * 3 + i * 3 + 2] = position.getZ(i);
+    }
+    
+    // Copy normal attribute if it exists
+    const normal = geometry.getAttribute('normal');
+    if (normal) {
+      for (let i = 0; i < normal.count; i++) {
+        normals[vertexOffset * 3 + i * 3] = normal.getX(i);
+        normals[vertexOffset * 3 + i * 3 + 1] = normal.getY(i);
+        normals[vertexOffset * 3 + i * 3 + 2] = normal.getZ(i);
+      }
+    }
+    
+    // Copy uv attribute if it exists
+    const uv = geometry.getAttribute('uv');
+    if (uv) {
+      for (let i = 0; i < uv.count; i++) {
+        uvs[vertexOffset * 2 + i * 2] = uv.getX(i);
+        uvs[vertexOffset * 2 + i * 2 + 1] = uv.getY(i);
+      }
+    }
+    
+    // Copy indices if they exist
+    if (geometry.index && indices) {
+      for (let i = 0; i < geometry.index.count; i++) {
+        indices[indexOffset + i] = geometry.index.getX(i) + vertexOffset;
+      }
+      indexOffset += geometry.index.count;
+    }
+    
+    vertexOffset += position.count;
+  }
+  
+  // Set attributes on merged geometry
+  mergedGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  mergedGeometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  mergedGeometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  
+  if (indices) {
+  mergedGeometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  }
+  
+  return mergedGeometry;
+}
