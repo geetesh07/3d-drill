@@ -14,6 +14,54 @@ import type { DrillParameters } from "@/types/drill";
 
 const EPS = 1e-6;
 
+/**
+ * Build one helical flute cutter: a circular profile swept along a helix that
+ * lies on a cylinder of radius `rBody`, starting at angle `phi`.
+ */
+function makeFluteCutter(
+  oc: OpenCascadeInstance,
+  p: DrillParameters,
+  rBody: number,
+  zStart: number,
+  zEnd: number,
+  phi: number,
+  rho: number
+): unknown {
+  const helixRad = (Math.max(0, p.helixAngle) * Math.PI) / 180;
+  // Lead = axial advance per full turn. Helix angle 0 → straight flute (A = 0).
+  const lead = helixRad > EPS ? (Math.PI * 2 * rBody) / Math.tan(helixRad) : Infinity;
+  const B = zEnd - zStart; // axial span
+  const A = isFinite(lead) ? (2 * Math.PI * B) / lead : 0; // total swept angle
+  const M = Math.sqrt(A * A + B * B); // segment param length on the cylinder
+
+  // Helix as a 2D line (u = angle, v = height) on a cylindrical surface.
+  const cylAxis = new oc.gp_Ax3_4(new oc.gp_Pnt_3(0, 0, 0), new oc.gp_Dir_4(0, 0, 1));
+  const cyl = new oc.Geom_CylindricalSurface_1(cylAxis, rBody);
+  const line2d = new oc.Geom2d_Line_3(
+    new oc.gp_Pnt2d_3(phi, zStart),
+    new oc.gp_Dir2d_4(A, B)
+  );
+  const helixEdge = new oc.BRepBuilderAPI_MakeEdge_31(
+    new oc.Handle_Geom2d_Curve_2(line2d),
+    new oc.Handle_Geom_Surface_2(cyl),
+    0,
+    M
+  ).Edge();
+  oc.BRepLib.BuildCurves3d_2(helixEdge);
+  const spine = new oc.BRepBuilderAPI_MakeWire_2(helixEdge).Wire();
+
+  // Circular cutter profile, centered on the surface at the helix start, in the
+  // plane normal to the helix tangent there.
+  const p0 = new oc.gp_Pnt_3(rBody * Math.cos(phi), rBody * Math.sin(phi), zStart);
+  const tangent = new oc.gp_Dir_4(-rBody * Math.sin(phi) * A, rBody * Math.cos(phi) * A, B);
+  const circ = new oc.gp_Circ_2(new oc.gp_Ax2_3(p0, tangent), rho);
+  const profEdge = new oc.BRepBuilderAPI_MakeEdge_8(circ).Edge();
+  const profWire = new oc.BRepBuilderAPI_MakeWire_2(profEdge).Wire();
+  const profFace = new oc.BRepBuilderAPI_MakeFace_15(profWire, true).Face();
+
+  return new oc.BRepOffsetAPI_MakePipe_1(spine, profFace).Shape();
+}
+
 export interface DrillSolid {
   oc: OpenCascadeInstance;
   shape: unknown; // TopoDS_Shape
@@ -52,6 +100,7 @@ export async function buildDrillSolid(p: DrillParameters): Promise<DrillSolid> {
   }
 
   // Fluted body
+  const zBodyStart = z;
   parts.push(new oc.BRepPrimAPI_MakeCylinder_3(axisAt(z), rBody, bodyLength).Shape());
   z += bodyLength;
 
@@ -65,6 +114,26 @@ export async function buildDrillSolid(p: DrillParameters): Promise<DrillSolid> {
   let shape = parts[0];
   for (let i = 1; i < parts.length; i++) {
     shape = new oc.BRepAlgoAPI_Fuse_3(shape, parts[i]).Shape();
+  }
+
+  // Cut helical flutes. Wrapped so a sweep/boolean failure degrades to the
+  // (still valid) drill blank rather than breaking the whole model.
+  const zApex = z;
+  if (p.fluteCount >= 2) {
+    try {
+      const rho = 0.3 * p.diameter; // cutter radius ≈ flute depth
+      const zStart = Math.max(zBodyStart - 1, zApex - p.fluteLength);
+      const zEnd = zApex; // sweep up to the tip apex
+      if (zEnd - zStart > 1) {
+        for (let i = 0; i < p.fluteCount; i++) {
+          const phi = (2 * Math.PI * i) / p.fluteCount;
+          const cutter = makeFluteCutter(oc, p, rBody, zStart, zEnd, phi, rho);
+          shape = new oc.BRepAlgoAPI_Cut_3(shape, cutter).Shape();
+        }
+      }
+    } catch (e) {
+      console.warn("[drill] flute cut failed; returning drill blank:", e);
+    }
   }
 
   return {
