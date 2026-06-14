@@ -8,6 +8,7 @@ import { SettingsProvider } from "./context/SettingsContext";
 import { AuthProvider } from "./context/AuthContext";
 import { SiteLayout } from "./components/site/SiteLayout";
 import { AppLayout } from "./components/site/AppLayout";
+import { RequireAuth } from "./components/site/RequireAuth";
 import { SpinnerGap } from "@phosphor-icons/react";
 
 import Landing from "./pages/Landing";
@@ -46,7 +47,14 @@ const App = () => (
                 </Route>
 
                 <Route element={<AppLayout />}>
-                  <Route path="/app" element={<DrillGenerator />} />
+                  <Route
+                    path="/app"
+                    element={
+                      <RequireAuth>
+                        <DrillGenerator />
+                      </RequireAuth>
+                    }
+                  />
                 </Route>
 
                 <Route path="/login" element={<Login />} />

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Warning, SpinnerGap } from "@phosphor-icons/react";
 import { AuthLayout, Field } from "@/components/site/AuthLayout";
 import { useAuth } from "@/context/AuthContext";
@@ -7,6 +7,8 @@ import { useAuth } from "@/context/AuthContext";
 export default function Register() {
   const { signUp, enabled } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from || "/app";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +25,7 @@ export default function Register() {
     setBusy(true);
     try {
       await signUp(name, email, password);
-      navigate("/app");
+      navigate(from, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {

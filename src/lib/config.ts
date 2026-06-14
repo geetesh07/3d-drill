@@ -12,6 +12,6 @@ export const config = {
     product: "Drill Designer",
     tagline: "Parametric cutting-tool CAD, in the browser.",
   },
-  authEnabled: false,
+  authEnabled: true,
   contactEmail: "hello@ntstools.com",
 } as const;
