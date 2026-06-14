@@ -230,6 +230,10 @@ export function shapeToEdges(oc: OpenCascadeInstance, shape: unknown): THREE.Buf
     oc.TopAbs_ShapeEnum.TopAbs_SHAPE
   );
 
+  // Pass 1: collect de-duplicated edge polylines with their arc length.
+  const edges: { pts: number[][]; len: number }[] = [];
+  let maxLen = 0;
+
   for (; explorer.More(); explorer.Next()) {
     try {
       const edge = oc.TopoDS.Edge_1(explorer.Current());
@@ -258,11 +262,28 @@ export function shapeToEdges(oc: OpenCascadeInstance, shape: unknown): THREE.Buf
       if (seen.has(key)) continue;
       seen.add(key);
 
+      let len = 0;
       for (let k = 0; k + 1 < pts.length; k++) {
-        positions.push(pts[k][0], pts[k][1], pts[k][2], pts[k + 1][0], pts[k + 1][1], pts[k + 1][2]);
+        const dx = pts[k + 1][0] - pts[k][0];
+        const dy = pts[k + 1][1] - pts[k][1];
+        const dz = pts[k + 1][2] - pts[k][2];
+        len += Math.hypot(dx, dy, dz);
       }
+      edges.push({ pts, len });
+      if (len > maxLen) maxLen = len;
     } catch {
       /* skip degenerate edges */
+    }
+  }
+
+  // Pass 2: keep only meaningful edges. Boolean-cut seams where the flute meets
+  // the body are short fragments; drop anything under ~4% of the longest edge.
+  const minLen = maxLen * 0.04;
+  for (const e of edges) {
+    if (e.len < minLen) continue;
+    const { pts } = e;
+    for (let k = 0; k + 1 < pts.length; k++) {
+      positions.push(pts[k][0], pts[k][1], pts[k][2], pts[k + 1][0], pts[k + 1][1], pts[k + 1][2]);
     }
   }
 

@@ -298,24 +298,22 @@ const ParameterInput: React.FC<ParameterInputProps> = ({
   }, []);
 
   return (
-    <Card className="dark:bg-gray-800">
+    <Card>
       <CardHeader>
-        <CardTitle className="dark:text-white">Drill Parameters</CardTitle>
-        <CardDescription className="dark:text-gray-400">
-          Configure your drill bit specifications
-        </CardDescription>
+        <CardTitle>Drill Parameters</CardTitle>
+        <CardDescription>Configure your drill bit specifications</CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs value={currentStep} onValueChange={handleTabChange} className="w-full">
           <TabsList className="grid w-full grid-cols-3 mb-4">
-            <TabsTrigger value="diameters" className="dark:data-[state=active]:bg-gray-700 dark:text-white">Diameters</TabsTrigger>
-            <TabsTrigger value="lengths" className="dark:data-[state=active]:bg-gray-700 dark:text-white">Lengths</TabsTrigger>
-            <TabsTrigger value="features" className="dark:data-[state=active]:bg-gray-700 dark:text-white">Features</TabsTrigger>
+            <TabsTrigger value="diameters">Diameters</TabsTrigger>
+            <TabsTrigger value="lengths">Lengths</TabsTrigger>
+            <TabsTrigger value="features">Features</TabsTrigger>
           </TabsList>
           
           <TabsContent value="diameters" className="space-y-4">
             {/* Diameter parameters */}
-            <div className="p-3 bg-primary/5 rounded-md mb-2">
+            <div className="p-3 bg-muted/40 rounded-md mb-2">
               <h3 className="text-sm font-medium mb-2">Diameter Parameters</h3>
               
               {/* Drill Diameter */}
@@ -371,7 +369,7 @@ const ParameterInput: React.FC<ParameterInputProps> = ({
 
           <TabsContent value="lengths" className="space-y-4">
             {/* Length parameters */}
-            <div className="p-3 bg-primary/5 rounded-md mb-2">
+            <div className="p-3 bg-muted/40 rounded-md mb-2">
               <h3 className="text-sm font-medium mb-2">Length Parameters</h3>
               
               {/* Shank Length */}
@@ -488,7 +486,7 @@ const ParameterInput: React.FC<ParameterInputProps> = ({
 
           <TabsContent value="features" className="space-y-4">
             {/* Features parameters */}
-            <div className="p-3 bg-primary/5 rounded-md mb-2">
+            <div className="p-3 bg-muted/40 rounded-md mb-2">
               <h3 className="text-sm font-medium mb-2">Feature Parameters</h3>
               
               {/* Flute Count */}
@@ -551,7 +549,7 @@ const ParameterInput: React.FC<ParameterInputProps> = ({
               </div>
             </div>
             
-            <div className="p-3 bg-primary/5 rounded-md">
+            <div className="p-3 bg-muted/40 rounded-md">
               <h4 className="text-sm font-medium mb-2">Technical Notes</h4>
               <ul className="text-xs text-muted-foreground space-y-1">
                 <li>• <span className="font-medium">Two Flutes:</span> Standard, general purpose drilling</li>
@@ -568,7 +566,6 @@ const ParameterInput: React.FC<ParameterInputProps> = ({
         <Button
           variant="outline"
           onClick={onReset}
-          className="dark:border-gray-600 dark:text-white dark:hover:bg-gray-700"
           disabled={isGenerating}
         >
           <RefreshCw className="mr-2 h-4 w-4" />
@@ -578,7 +575,6 @@ const ParameterInput: React.FC<ParameterInputProps> = ({
           <Button
             variant="outline"
             onClick={() => onExport('dxf')}
-            className="dark:border-gray-600 dark:text-white dark:hover:bg-gray-700"
             disabled={isGenerating}
           >
             <Download className="mr-2 h-4 w-4" />
@@ -587,7 +583,6 @@ const ParameterInput: React.FC<ParameterInputProps> = ({
           <Button
             variant="outline"
             onClick={() => onExport('step')}
-            className="dark:border-gray-600 dark:text-white dark:hover:bg-gray-700"
             disabled={isGenerating}
           >
             <Download className="mr-2 h-4 w-4" />
@@ -595,7 +590,7 @@ const ParameterInput: React.FC<ParameterInputProps> = ({
           </Button>
           <Button
             onClick={onGenerateModel}
-            className="dark:bg-blue-600 dark:hover:bg-blue-700"
+            className=""
             disabled={isGenerating}
           >
             {isGenerating ? (
