@@ -8,6 +8,7 @@ import { DrillParameters } from "@/types/drill";
 import { toast } from "sonner";
 import { buildDrillSolid, shapeToBufferGeometry, shapeToEdges, shapeToStep } from "@/lib/occDrill";
 import { exportDrillDxf } from "@/lib/occDxf";
+import "@/lib/occProjection"; // registers window.__projTest in dev
 import { useSettings } from "@/context/SettingsContext";
 import { Loader2 } from "lucide-react";
 
@@ -85,7 +86,8 @@ const DrillGenerator = () => {
           downloadText(`${base}.step`, shapeToStep(oc, shape), "application/step");
           if (showToasts) toast.success("STEP exported");
         } else {
-          downloadText(`${base}.dxf`, exportDrillDxf(oc, shape, parameters), "application/dxf");
+          const dxf = await exportDrillDxf(oc, shape, parameters, (m) => setStatus(m));
+          downloadText(`${base}.dxf`, dxf, "application/dxf");
           if (showToasts) toast.success("DXF (2D drawing) exported");
         }
       } catch (e) {
