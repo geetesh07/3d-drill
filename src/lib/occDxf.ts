@@ -95,6 +95,10 @@ export function exportDrillDxf(oc: OpenCascadeInstance, shape: unknown, p: Drill
   }
 
   const d = new Drawing();
+  // dxf-writer only ships CONTINUOUS/DASHED/DOTTED — a layer referencing an
+  // undefined linetype (e.g. "CENTER") makes AutoCAD reject the file, so we
+  // register CENTER explicitly before any layer uses it.
+  d.addLineType("CENTER", "Center ____ _ ____ _", [12.7, -2.54, 2.54, -2.54]);
   d.addLayer("Outline", 7, "CONTINUOUS");
   d.addLayer("Centerline", 1, "CENTER");
   d.addLayer("Text", 3, "CONTINUOUS");

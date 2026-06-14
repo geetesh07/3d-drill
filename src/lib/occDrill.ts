@@ -210,6 +210,69 @@ export function shapeToBufferGeometry(
   return geometry;
 }
 
+/**
+ * Extract the model's B-rep edges (outline, circles, AND the helical flute edges)
+ * as line segments for a wireframe/edges view. Independent of the surface mesh.
+ */
+export function shapeToEdges(oc: OpenCascadeInstance, shape: unknown): THREE.BufferGeometry {
+  const positions: number[] = [];
+  let lineType: unknown = null;
+  try {
+    lineType = oc.GeomAbs_CurveType.GeomAbs_Line;
+  } catch {
+    lineType = null;
+  }
+
+  const seen = new Set<string>();
+  const explorer = new oc.TopExp_Explorer_2(
+    shape,
+    oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+    oc.TopAbs_ShapeEnum.TopAbs_SHAPE
+  );
+
+  for (; explorer.More(); explorer.Next()) {
+    try {
+      const edge = oc.TopoDS.Edge_1(explorer.Current());
+      const ad = new oc.BRepAdaptor_Curve_2(edge);
+      const f = ad.FirstParameter();
+      const l = ad.LastParameter();
+      if (!isFinite(f) || !isFinite(l) || l - f <= 1e-9) continue;
+
+      let n = 48;
+      try {
+        n = ad.GetType() === lineType ? 1 : 64;
+      } catch {
+        n = 48;
+      }
+
+      const pts: number[][] = [];
+      for (let k = 0; k <= n; k++) {
+        const t = f + ((l - f) * k) / n;
+        const p = ad.Value(t);
+        pts.push([p.X(), p.Y(), p.Z()]);
+      }
+
+      const a = pts[0];
+      const b = pts[pts.length - 1];
+      const key = [a, b].map((p) => p.map((v) => v.toFixed(2)).join(",")).sort().join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      for (let k = 0; k + 1 < pts.length; k++) {
+        positions.push(pts[k][0], pts[k][1], pts[k][2], pts[k + 1][0], pts[k + 1][1], pts[k + 1][2]);
+      }
+    } catch {
+      /* skip degenerate edges */
+    }
+  }
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  return g;
+}
+
 /** Write the shape to a real STEP (ISO-10303) string. */
 export function shapeToStep(oc: OpenCascadeInstance, shape: unknown): string {
   const writer = new oc.STEPControl_Writer_1();

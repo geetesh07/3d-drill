@@ -1,11 +1,12 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useState } from "react";
 import * as THREE from "three";
-import { DrillViewer } from "@/components/DrillViewer";
+import { DrillViewer, type ViewMode } from "@/components/DrillViewer";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ParameterInput from "@/components/ParameterInput";
 import { DrillParameters } from "@/types/drill";
 import { toast } from "sonner";
-import { buildDrillSolid, shapeToBufferGeometry, shapeToStep } from "@/lib/occDrill";
+import { buildDrillSolid, shapeToBufferGeometry, shapeToEdges, shapeToStep } from "@/lib/occDrill";
 import { exportDrillDxf } from "@/lib/occDxf";
 import { useSettings } from "@/context/SettingsContext";
 import { Loader2 } from "lucide-react";
@@ -40,9 +41,10 @@ const DrillGenerator = () => {
   const { showToasts } = useSettings();
   const [parameters, setParameters] = useState<DrillParameters>(DEFAULT_PARAMETERS);
   const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
+  const [edges, setEdges] = useState<THREE.BufferGeometry | null>(null);
+  const [mode, setMode] = useState<ViewMode>("edges");
   const [isBusy, setIsBusy] = useState(false);
   const [status, setStatus] = useState("");
-  const fileBase = useRef("drill");
 
   const handleParameterChange = useCallback((key: keyof DrillParameters, value: unknown) => {
     setParameters((prev) => ({ ...prev, [key]: value }));
@@ -51,6 +53,7 @@ const DrillGenerator = () => {
   const handleReset = useCallback(() => {
     setParameters(DEFAULT_PARAMETERS);
     setGeometry(null);
+    setEdges(null);
   }, []);
 
   const handleGenerate = useCallback(async () => {
@@ -58,9 +61,8 @@ const DrillGenerator = () => {
     setStatus("Loading CAD engine & building solid…");
     try {
       const { oc, shape, metrics } = await buildDrillSolid(parameters);
-      const geom = shapeToBufferGeometry(oc, shape);
-      fileBase.current = `Drill_${parameters.diameter}x${parameters.length}_${parameters.fluteCount}F`;
-      setGeometry(geom);
+      setGeometry(shapeToBufferGeometry(oc, shape));
+      setEdges(shapeToEdges(oc, shape));
       console.log("[drill] generated", metrics);
       if (showToasts) toast.success("Drill model generated");
     } catch (e) {
@@ -80,12 +82,10 @@ const DrillGenerator = () => {
         const { oc, shape } = await buildDrillSolid(parameters);
         const base = `Drill_${parameters.diameter}x${parameters.length}_${parameters.fluteCount}F`;
         if (format === "step") {
-          const step = shapeToStep(oc, shape);
-          downloadText(`${base}.step`, step, "application/step");
+          downloadText(`${base}.step`, shapeToStep(oc, shape), "application/step");
           if (showToasts) toast.success("STEP exported");
         } else {
-          const dxf = exportDrillDxf(oc, shape, parameters);
-          downloadText(`${base}.dxf`, dxf, "application/dxf");
+          downloadText(`${base}.dxf`, exportDrillDxf(oc, shape, parameters), "application/dxf");
           if (showToasts) toast.success("DXF (2D drawing) exported");
         }
       } catch (e) {
@@ -99,12 +99,14 @@ const DrillGenerator = () => {
     [parameters, showToasts]
   );
 
+  const hasModel = geometry || edges;
+
   return (
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex flex-col space-y-1">
         <h1 className="text-3xl font-bold">Drill Designer</h1>
         <p className="text-muted-foreground">
-          Parametric twist-drill modeling on a real CAD kernel (OpenCASCADE) — exact solids, real STEP.
+          Parametric twist-drill modeling on a real CAD kernel (OpenCASCADE) — exact solids, real STEP &amp; DXF.
         </p>
       </div>
 
@@ -119,14 +121,24 @@ const DrillGenerator = () => {
         />
 
         <Card className="dark:bg-gray-800">
-          <CardContent className="p-4">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <Tabs value={mode} onValueChange={(v) => setMode(v as ViewMode)}>
+                <TabsList>
+                  <TabsTrigger value="edges">Edges</TabsTrigger>
+                  <TabsTrigger value="shaded">Shaded</TabsTrigger>
+                  <TabsTrigger value="both">Both</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+
             <div className="aspect-video relative">
-              {geometry ? (
-                <DrillViewer geometry={geometry} surfaceFinish={parameters.surfaceFinish} />
+              {hasModel ? (
+                <DrillViewer geometry={geometry} edges={edges} surfaceFinish={parameters.surfaceFinish} mode={mode} />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-muted dark:bg-gray-700 rounded-lg">
                   <p className="text-muted-foreground text-center px-6">
-                    Set your parameters and press <span className="font-medium">Generate</span> to build the 3D model.
+                    Set your parameters and press <span className="font-medium">Generate</span> to build the model.
                   </p>
                 </div>
               )}
