@@ -1,6 +1,7 @@
-import React, { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { DrillViewer, type ViewMode } from "@/components/DrillViewer";
+import { DrawingView } from "@/components/DrawingView";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ParameterInput from "@/components/ParameterInput";
@@ -8,7 +9,7 @@ import { DrillParameters } from "@/types/drill";
 import { toast } from "sonner";
 import { buildDrillSolid, shapeToBufferGeometry, shapeToEdges, shapeToStep } from "@/lib/occDrill";
 import { exportDrillDxf } from "@/lib/occDxf";
-import "@/lib/occProjection"; // registers window.__projTest in dev
+import { projectEdges } from "@/lib/occProjection";
 import { useSettings } from "@/context/SettingsContext";
 import { Loader2 } from "lucide-react";
 
@@ -44,8 +45,11 @@ const DrillGenerator = () => {
   const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
   const [edges, setEdges] = useState<THREE.BufferGeometry | null>(null);
   const [mode, setMode] = useState<ViewMode>("shaded");
+  const [projVisible, setProjVisible] = useState<THREE.BufferGeometry | null>(null);
+  const [projHidden, setProjHidden] = useState<THREE.BufferGeometry | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const meshRef = useRef<THREE.BufferGeometry | null>(null);
 
   const handleParameterChange = useCallback((key: keyof DrillParameters, value: unknown) => {
     setParameters((prev) => ({ ...prev, [key]: value }));
@@ -55,6 +59,9 @@ const DrillGenerator = () => {
     setParameters(DEFAULT_PARAMETERS);
     setGeometry(null);
     setEdges(null);
+    setProjVisible(null);
+    setProjHidden(null);
+    meshRef.current = null;
   }, []);
 
   const handleGenerate = useCallback(async () => {
@@ -62,8 +69,13 @@ const DrillGenerator = () => {
     setStatus("Loading CAD engine & building solid…");
     try {
       const { oc, shape, metrics } = await buildDrillSolid(parameters);
-      setGeometry(shapeToBufferGeometry(oc, shape));
+      const meshGeom = shapeToBufferGeometry(oc, shape);
+      meshRef.current = meshGeom;
+      setGeometry(meshGeom);
       setEdges(shapeToEdges(oc, shape));
+      // Invalidate the cached 2D projection — it'll be recomputed when viewed.
+      setProjVisible(null);
+      setProjHidden(null);
       console.log("[drill] generated", metrics);
       if (showToasts) toast.success("Drill model generated");
     } catch (e) {
@@ -101,7 +113,35 @@ const DrillGenerator = () => {
     [parameters, showToasts]
   );
 
-  const hasModel = geometry || edges;
+  // Compute the 2D projection lazily, only when the drawing view is opened.
+  useEffect(() => {
+    if (mode !== "drawing" || projVisible || !meshRef.current) return;
+    let cancelled = false;
+    (async () => {
+      setIsBusy(true);
+      setStatus("Projecting 2D drawing…");
+      try {
+        const view = await projectEdges(meshRef.current!, new THREE.Euler(0, Math.PI / 2, 0));
+        if (!cancelled) {
+          setProjVisible(view.visible);
+          setProjHidden(view.hidden);
+        }
+      } catch (e) {
+        console.error("Projection failed:", e);
+        if (!cancelled && showToasts) toast.error("Failed to build 2D drawing", { description: errMessage(e) });
+      } finally {
+        if (!cancelled) {
+          setIsBusy(false);
+          setStatus("");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, projVisible, showToasts]);
+
+  const hasModel = geometry || edges || projVisible;
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -122,23 +162,34 @@ const DrillGenerator = () => {
           isGenerating={isBusy}
         />
 
-        <Card className="dark:bg-gray-800">
+        <Card>
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center justify-between">
               <Tabs value={mode} onValueChange={(v) => setMode(v as ViewMode)}>
                 <TabsList>
                   <TabsTrigger value="shaded">Shaded</TabsTrigger>
                   <TabsTrigger value="edges">Edges</TabsTrigger>
-                  <TabsTrigger value="both">Both</TabsTrigger>
+                  <TabsTrigger value="drawing">2D Drawing</TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
 
             <div className="aspect-video relative">
               {hasModel ? (
-                <DrillViewer geometry={geometry} edges={edges} surfaceFinish={parameters.surfaceFinish} mode={mode} />
+                mode === "drawing" ? (
+                  <DrawingView visible={projVisible} hidden={projHidden} />
+                ) : (
+                  <DrillViewer
+                    geometry={geometry}
+                    edges={edges}
+                    projVisible={projVisible}
+                    projHidden={projHidden}
+                    surfaceFinish={parameters.surfaceFinish}
+                    mode={mode}
+                  />
+                )
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-muted dark:bg-gray-700 rounded-lg">
+                <div className="w-full h-full flex items-center justify-center bg-muted/40 rounded-lg">
                   <p className="text-muted-foreground text-center px-6">
                     Set your parameters and press <span className="font-medium">Generate</span> to build the model.
                   </p>
@@ -146,10 +197,10 @@ const DrillGenerator = () => {
               )}
 
               {isBusy && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg">
-                  <div className="flex items-center gap-3 bg-white px-4 py-3 rounded-md shadow">
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
+                  <div className="glass flex items-center gap-3 px-4 py-3 rounded-md">
                     <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                    <span className="text-sm">{status || "Working…"}</span>
+                    <span className="text-sm text-foreground">{status || "Working…"}</span>
                   </div>
                 </div>
               )}
