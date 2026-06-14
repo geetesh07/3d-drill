@@ -42,7 +42,7 @@ const DrillGenerator = () => {
   const [parameters, setParameters] = useState<DrillParameters>(DEFAULT_PARAMETERS);
   const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
   const [edges, setEdges] = useState<THREE.BufferGeometry | null>(null);
-  const [mode, setMode] = useState<ViewMode>("edges");
+  const [mode, setMode] = useState<ViewMode>("shaded");
   const [isBusy, setIsBusy] = useState(false);
   const [status, setStatus] = useState("");
 
@@ -125,8 +125,8 @@ const DrillGenerator = () => {
             <div className="flex items-center justify-between">
               <Tabs value={mode} onValueChange={(v) => setMode(v as ViewMode)}>
                 <TabsList>
-                  <TabsTrigger value="edges">Edges</TabsTrigger>
                   <TabsTrigger value="shaded">Shaded</TabsTrigger>
+                  <TabsTrigger value="edges">Edges</TabsTrigger>
                   <TabsTrigger value="both">Both</TabsTrigger>
                 </TabsList>
               </Tabs>

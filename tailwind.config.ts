@@ -65,8 +65,8 @@ export default {
 				}
 			},
 			fontFamily: {
-				sans: ['-apple-system', 'BlinkMacSystemFont', 'San Francisco', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'sans-serif'],
-				mono: ['SF Mono', 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', 'monospace'],
+				sans: ['Geist Variable', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+				mono: ['Geist Mono Variable', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
 			},
 			borderRadius: {
 				lg: 'var(--radius)',

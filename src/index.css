@@ -1,69 +1,66 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+  NTS Tool Solutions — Precision Dark design system.
+  Dark-first. One electric-blue accent. Geist + Geist Mono. No glows, no gradients-as-crutch.
+*/
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    --background: 222 14% 5%;
+    --foreground: 210 16% 93%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card: 222 13% 7.5%;
+    --card-foreground: 210 16% 93%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover: 222 14% 6%;
+    --popover-foreground: 210 16% 93%;
 
-    --primary: 210 100% 50%;
-    --primary-foreground: 210 40% 98%;
+    /* Electric blue accent — used as solid fills / 1px borders, never as glow */
+    --primary: 211 92% 62%;
+    --primary-foreground: 222 47% 6%;
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 220 11% 12%;
+    --secondary-foreground: 210 16% 93%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 220 10% 13%;
+    --muted-foreground: 220 9% 62%;
 
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 211 92% 62%;
+    --accent-foreground: 222 47% 6%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 210 16% 96%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 215 20% 65%;
+    --border: 220 10% 15%;
+    --input: 220 10% 15%;
+    --ring: 211 92% 62%;
 
     --radius: 0.75rem;
   }
 
+  /* Single theme for now; .dark mirrors :root so existing dark: utilities still resolve. */
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 100% 50%;
-    --primary-foreground: 222 47% 11%;
-
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 212.7 26.8% 83.9%;
+    --background: 222 14% 5%;
+    --foreground: 210 16% 93%;
+    --card: 222 13% 7.5%;
+    --card-foreground: 210 16% 93%;
+    --popover: 222 14% 6%;
+    --popover-foreground: 210 16% 93%;
+    --primary: 211 92% 62%;
+    --primary-foreground: 222 47% 6%;
+    --secondary: 220 11% 12%;
+    --secondary-foreground: 210 16% 93%;
+    --muted: 220 10% 13%;
+    --muted-foreground: 220 9% 62%;
+    --accent: 211 92% 62%;
+    --accent-foreground: 222 47% 6%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 210 16% 96%;
+    --border: 220 10% 15%;
+    --input: 220 10% 15%;
+    --ring: 211 92% 62%;
   }
 }
 
@@ -72,74 +69,58 @@
     @apply border-border;
   }
 
+  html {
+    color-scheme: dark;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "ss01", "cv01", "cv03";
   }
 
-  /* Special glass morphism effect */
+  ::selection {
+    background: hsl(var(--primary) / 0.25);
+  }
+
+  h1, h2, h3, h4 {
+    @apply tracking-tight;
+  }
+}
+
+@layer components {
+  /* Blueprint grid — fixed, non-interactive, GPU-cheap */
+  .bg-blueprint {
+    background-image:
+      linear-gradient(to right, hsl(var(--foreground) / 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--foreground) / 0.04) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+
+  /* Liquid-glass surface: real edge refraction, not just blur */
   .glass {
-    @apply bg-white/30 backdrop-blur-md border border-white/20 shadow-glass;
+    @apply backdrop-blur-xl;
+    background: hsl(var(--card) / 0.6);
+    border: 1px solid hsl(var(--foreground) / 0.08);
+    box-shadow: inset 0 1px 0 hsl(var(--foreground) / 0.06), 0 20px 40px -24px rgb(0 0 0 / 0.6);
   }
 
-  .glass-dark {
-    @apply bg-black/30 backdrop-blur-md border border-white/10 shadow-glass;
+  /* Mono "kicker" label used above section headings */
+  .kicker {
+    @apply font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground;
   }
 
-  /* Special input styles */
   .parameter-input {
-    @apply transition-all duration-300 ease-out;
-    @apply focus:ring-2 focus:ring-primary/50 focus:ring-offset-0;
+    @apply transition-colors duration-200 ease-out focus:ring-2 focus:ring-primary/40 focus:ring-offset-0;
   }
+}
 
-  /* Special button styles */
-  .btn-primary {
-    @apply bg-primary text-primary-foreground shadow-sm hover:bg-primary/90;
-    @apply transition-all duration-300 ease-out;
-  }
-
-  /* 3D view container */
-  .model-container {
-    perspective: 1000px;
-  }
-
-  .model-rotate {
-    transform-style: preserve-3d;
-  }
-
-  /* Smooth page transitions */
-  .page-transition-enter {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  
-  .page-transition-enter-active {
-    opacity: 1;
-    transform: translateY(0);
-    transition: opacity 400ms, transform 400ms;
-  }
-  
-  .page-transition-exit {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  
-  .page-transition-exit-active {
-    opacity: 0;
-    transform: translateY(-10px);
-    transition: opacity 400ms, transform 400ms;
-  }
-
-  /* Background grid pattern */
-  .bg-grid-pattern {
-    background-image: 
-      linear-gradient(to right, rgba(0, 0, 0, 0.1) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
-    background-size: 20px 20px;
-  }
-
-  .dark .bg-grid-pattern {
-    background-image: 
-      linear-gradient(to right, rgba(255, 255, 255, 0.1) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
-  }
+/* Film grain — fixed overlay only (never on scroll containers) */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
