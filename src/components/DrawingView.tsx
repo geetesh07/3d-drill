@@ -72,13 +72,7 @@ export function DrawingView({ visible, hidden }: DrawingViewProps) {
           opacity={0.7}
           vectorEffect="non-scaling-stroke"
         />
-        {/* hidden edges (dashed) */}
-        <g stroke="#5b6472" strokeWidth={1} strokeDasharray="4 3" vectorEffect="non-scaling-stroke">
-          {hid.map((s, i) => (
-            <line key={`h${i}`} x1={s[0]} y1={s[1]} x2={s[2]} y2={s[3]} vectorEffect="non-scaling-stroke" />
-          ))}
-        </g>
-        {/* visible edges (solid) */}
+        {/* visible edges only — hidden lines omitted */}
         <g stroke="#e5e7eb" strokeWidth={1.4} strokeLinecap="round" vectorEffect="non-scaling-stroke">
           {vis.map((s, i) => (
             <line key={`v${i}`} x1={s[0]} y1={s[1]} x2={s[2]} y2={s[3]} vectorEffect="non-scaling-stroke" />

@@ -46,8 +46,13 @@ function makeView(p: ProjectedView): View {
   return { vis, hid, minX, maxX, minY, maxY };
 }
 
+const MIN_SEG = 0.1; // mm — drop anything shorter (eliminates dot artifacts)
 const draw = (d: Drawing, segs: Seg[], ox: number, oy: number) => {
-  for (const s of segs) d.drawLine(ox + s[0], oy + s[1], ox + s[2], oy + s[3]);
+  for (const s of segs) {
+    const dx = s[2] - s[0], dy = s[3] - s[1];
+    if (dx * dx + dy * dy < MIN_SEG * MIN_SEG) continue;
+    d.drawLine(ox + s[0], oy + s[1], ox + s[2], oy + s[3]);
+  }
 };
 
 /** Build a real DXF (side + end views, HLR) projected from the model. */
@@ -57,19 +62,19 @@ export async function exportDrillDxf(
   p: DrillParameters,
   onProgress?: (msg: string) => void
 ): Promise<string> {
-  // Slightly coarse mesh keeps the projection fast without hurting the outline.
-  const mesh = shapeToBufferGeometry(oc, shape, 0.15, 0.4);
+  // Fine tessellation so tip geometry (cutting lips, chisel edge) survives projection.
+  const mesh = shapeToBufferGeometry(oc, shape, 0.04, 0.1);
 
   onProgress?.("Projecting side view…");
-  const side = makeView(await projectEdges(mesh, new THREE.Euler(0, Math.PI / 2, 0)));
+  const side = makeView(await projectEdges(mesh, new THREE.Euler(0, Math.PI / 2, 0), 30));
   onProgress?.("Projecting end view…");
-  const end = makeView(await projectEdges(mesh, new THREE.Euler(Math.PI / 2, 0, 0)));
+  // Use a tight angleThreshold (5°) for the end view so the cutting lips and chisel
+  // edge — shallow dihedral where flute meets tip cone — are not filtered away.
+  const end = makeView(await projectEdges(mesh, new THREE.Euler(Math.PI / 2, 0, 0), 5));
 
   const d = new Drawing();
   d.addLineType("CENTER", "Center ____ _ ____ _", [12.7, -2.54, 2.54, -2.54]);
-  d.addLineType("HIDDEN", "Hidden __ __ __", [2.54, -1.27]);
   d.addLayer("Visible", 7, "CONTINUOUS");
-  d.addLayer("Hidden", 8, "HIDDEN");
   d.addLayer("Center", 1, "CENTER");
   d.addLayer("Text", 3, "CONTINUOUS");
 
@@ -80,15 +85,10 @@ export async function exportDrillDxf(
   const endOx = sideOx + side.maxX + gap - end.minX;
   const endOy = -(end.minY + end.maxY) / 2;
 
-  // Visible (solid)
+  // Visible edges only — hidden lines omitted per user preference
   d.setActiveLayer("Visible");
   draw(d, side.vis, sideOx, sideOy);
   draw(d, end.vis, endOx, endOy);
-
-  // Hidden (dashed)
-  d.setActiveLayer("Hidden");
-  draw(d, side.hid, sideOx, sideOy);
-  draw(d, end.hid, endOx, endOy);
 
   // Centerlines
   d.setActiveLayer("Center");
@@ -111,7 +111,14 @@ export async function exportDrillDxf(
     `Drill  ${p.diameter}mm x ${p.length}mm  ${p.fluteCount}-flute  ${p.helixAngle}deg helix  ${p.tipAngle}deg point`
   );
 
-  return d.toDxfString();
+  // dxf-writer doesn't emit $ACADVER; without it AutoCAD opens the file read-only.
+  // Inject it at the top of the HEADER section (R12 / AC1009 = widest compatibility).
+  const raw = d.toDxfString();
+  const headerMarker = "  0\nSECTION\n  2\nHEADER\n";
+  const acadVer = "  9\n$ACADVER\n  1\nAC1009\n";
+  return raw.includes(headerMarker)
+    ? raw.replace(headerMarker, headerMarker + acadVer)
+    : raw;
 }
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
