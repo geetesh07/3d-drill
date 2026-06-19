@@ -1,7 +1,7 @@
 /**
- * 2D engineering drawing (DXF) generated FROM the 3D model, with hidden-line
- * removal via three-edge-projection. Produces a side view + end view, each with
- * visible edges (solid) and hidden edges (dashed) — a real orthographic drawing.
+ * 2D engineering drawing (DXF) generated FROM the 3D model.
+ * Side view: three-edge-projection HLR on the tessellated mesh.
+ * End view: exact OCC B-rep edges projected to XY, filtered to tip + outer circle.
  */
 import Drawing from "dxf-writer";
 import * as THREE from "three";
@@ -32,18 +32,93 @@ interface View {
   maxY: number;
 }
 
-function makeView(p: ProjectedView): View {
-  const vis = toSegments(p.visible);
-  const hid = toSegments(p.hidden);
+function boundsOf(segs: Seg[]): Pick<View, "minX" | "maxX" | "minY" | "maxY"> {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const s of [...vis, ...hid]) {
+  for (const s of segs) {
     minX = Math.min(minX, s[0], s[2]);
     maxX = Math.max(maxX, s[0], s[2]);
     minY = Math.min(minY, s[1], s[3]);
     maxY = Math.max(maxY, s[1], s[3]);
   }
   if (!isFinite(minX)) { minX = maxX = minY = maxY = 0; }
-  return { vis, hid, minX, maxX, minY, maxY };
+  return { minX, maxX, minY, maxY };
+}
+
+function makeView(p: ProjectedView): View {
+  const vis = toSegments(p.visible);
+  const hid = toSegments(p.hidden);
+  return { vis, hid, ...boundsOf([...vis, ...hid]) };
+}
+
+/**
+ * End view from exact OCC B-rep edges projected to XY (looking down -Z from tip).
+ * Only includes:
+ *   • edges whose midpoint Z is in the tip region (top 20% of total length)
+ *   • circular edges at radius ≈ rBody (the body diameter silhouette)
+ * This gives: outer circle + cutting lips + chisel edge — no tessellation artifacts.
+ */
+function buildEndView(oc: OpenCascadeInstance, shape: unknown, p: DrillParameters): View {
+  const rBody = p.diameter / 2;
+  const totalLength = p.length;
+  const tipZStart = totalLength * 0.80; // show edges in top 20% (tip region)
+  const rTol = rBody * 0.05; // 5% tolerance for "at outer diameter"
+
+  const segs: Seg[] = [];
+  let lineType: unknown = null;
+  try { lineType = oc.GeomAbs_CurveType.GeomAbs_Line; } catch { /* ignore */ }
+
+  const explorer = new (oc as unknown as { TopExp_Explorer_2: new (...a: unknown[]) => unknown }).TopExp_Explorer_2(
+    shape,
+    (oc as unknown as { TopAbs_ShapeEnum: { TopAbs_EDGE: unknown } }).TopAbs_ShapeEnum.TopAbs_EDGE,
+    (oc as unknown as { TopAbs_ShapeEnum: { TopAbs_SHAPE: unknown } }).TopAbs_ShapeEnum.TopAbs_SHAPE
+  );
+
+  const seen = new Set<string>();
+  for (; (explorer as unknown as { More: () => boolean }).More(); (explorer as unknown as { Next: () => void }).Next()) {
+    try {
+      const edge = (oc as unknown as { TopoDS: { Edge_1: (s: unknown) => unknown } }).TopoDS.Edge_1(
+        (explorer as unknown as { Current: () => unknown }).Current()
+      );
+      const ad = new (oc as unknown as { BRepAdaptor_Curve_2: new (e: unknown) => unknown }).BRepAdaptor_Curve_2(edge);
+      const f = (ad as unknown as { FirstParameter: () => number }).FirstParameter();
+      const l = (ad as unknown as { LastParameter: () => number }).LastParameter();
+      if (!isFinite(f) || !isFinite(l) || l - f <= 1e-9) continue;
+
+      let n = 48;
+      try { n = (ad as unknown as { GetType: () => unknown }).GetType() === lineType ? 1 : 64; } catch { /* ignore */ }
+
+      const pts3d: [number, number, number][] = [];
+      for (let k = 0; k <= n; k++) {
+        const t = f + ((l - f) * k) / n;
+        const pnt = (ad as unknown as { Value: (t: number) => { X: () => number; Y: () => number; Z: () => number } }).Value(t);
+        pts3d.push([pnt.X(), pnt.Y(), pnt.Z()]);
+      }
+
+      // De-duplicate
+      const a = pts3d[0], b = pts3d[pts3d.length - 1];
+      const key = [a, b].map(pt => pt.map(v => v.toFixed(2)).join(",")).sort().join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const midZ = pts3d.reduce((s, pt) => s + pt[2], 0) / pts3d.length;
+      const midR = pts3d.reduce((s, pt) => s + Math.hypot(pt[0], pt[1]), 0) / pts3d.length;
+      const isOuterCircle = Math.abs(midR - rBody) < rTol;
+      const isTipRegion = midZ > tipZStart;
+
+      if (!isOuterCircle && !isTipRegion) continue;
+
+      // Project to XY (looking down -Z from the tip)
+      for (let k = 0; k + 1 < pts3d.length; k++) {
+        const [x1, y1] = pts3d[k];
+        const [x2, y2] = pts3d[k + 1];
+        const dx = x2 - x1, dy = y2 - y1;
+        if (dx * dx + dy * dy < 0.01) continue;
+        segs.push([x1, y1, x2, y2]);
+      }
+    } catch { /* skip degenerate */ }
+  }
+
+  return { vis: segs, hid: [], ...boundsOf(segs) };
 }
 
 const MIN_SEG = 0.1; // mm — drop anything shorter (eliminates dot artifacts)
@@ -55,22 +130,20 @@ const draw = (d: Drawing, segs: Seg[], ox: number, oy: number) => {
   }
 };
 
-/** Build a real DXF (side + end views, HLR) projected from the model. */
+/** Build a real DXF (side + end views) from the model. */
 export async function exportDrillDxf(
   oc: OpenCascadeInstance,
   shape: unknown,
   p: DrillParameters,
   onProgress?: (msg: string) => void
 ): Promise<string> {
-  // Fine tessellation so tip geometry (cutting lips, chisel edge) survives projection.
   const mesh = shapeToBufferGeometry(oc, shape, 0.04, 0.1);
 
   onProgress?.("Projecting side view…");
   const side = makeView(await projectEdges(mesh, new THREE.Euler(0, Math.PI / 2, 0), 30));
-  onProgress?.("Projecting end view…");
-  // Use a tight angleThreshold (5°) for the end view so the cutting lips and chisel
-  // edge — shallow dihedral where flute meets tip cone — are not filtered away.
-  const end = makeView(await projectEdges(mesh, new THREE.Euler(Math.PI / 2, 0, 0), 5));
+  onProgress?.("Building end view…");
+  // End view uses exact OCC B-rep edges (not mesh projection) — reliable tip geometry
+  const end = buildEndView(oc, shape, p);
 
   const d = new Drawing();
   d.addLineType("CENTER", "Center ____ _ ____ _", [12.7, -2.54, 2.54, -2.54]);
